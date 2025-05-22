@@ -19,3 +19,7 @@
 
 // Sensor Kelembapan
 #define DHT_PIN 13
+
+// Sensor pH
+#define PH_PIN 32
+#define TEMP_PIN 33
