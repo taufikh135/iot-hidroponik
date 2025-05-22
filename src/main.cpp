@@ -1,8 +1,12 @@
+#include <ArduinoJson.h>
+
 #include "WifiControl.h"
 #include "SensorDeteksiObjek.h"
 #include "MqttClient.h"
 #include "SensorTDS.h"
 #include "SensorSuhuAir.h"
+#include "SensorKelembapan.h"
+
 #include "config.h"
 
 WifiControl wifiControl(WIFI_SSID, WIFI_PASSWORD);
@@ -10,6 +14,7 @@ SensorDeteksiObjek sensorDeteksiObjek(TRIGGER_PIN, ECHO_PIN);
 MqttClient mqttClient(wifiControl.getClient(), MQTT_SERVER, MQTT_PORT);
 SensorTDS sensorTDS(TDS_PIN);
 SensorSuhuAir sensorSuhuAir(DS18B20_PIN);
+SensorKelembapan sensorKelembapan(DHT_PIN);
 
 void callback(String message) {
 
@@ -35,6 +40,9 @@ void setup() {
 
     // Sensor Suhu Air
     sensorSuhuAir.begin();
+
+    // Sensor Kelembapan
+    sensorKelembapan.begin();
 }
 
 void loop() {
@@ -47,6 +55,15 @@ void loop() {
     long jarakObjek = sensorDeteksiObjek.readDistance();
     float suhuAir = sensorSuhuAir.readTemperature();
     float tds = sensorTDS.readTDSPpm();
+    float kelembapan = sensorKelembapan.readHumidity();
 
-    mqttClient.publish(MQTT_TOPIC, String(jarakObjek).c_str());
+    StaticJsonDocument<200> doc;
+    doc["jarak"] = jarakObjek;
+    doc["suhu"] = suhuAir;
+    doc["tds"] = tds;
+    doc["kelembapan"] = kelembapan;
+    String jsonString;
+    serializeJson(doc, jsonString);
+
+    mqttClient.publish(MQTT_TOPIC, jsonString.c_str());
 }

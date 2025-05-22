@@ -1,10 +1,10 @@
 // WiFi Config
-#define WIFI_SSID "aixbwis"
-#define WIFI_PASSWORD "12345678"
+#define WIFI_SSID "Redmi Note 8"
+#define WIFI_PASSWORD "ewedulu123"
 
 // MQTT Config
-#define MQTT_SERVER "broker.emqx.io"
-#define MQTT_PORT 1883
+#define MQTT_SERVER "192.168.249.135"
+#define MQTT_PORT 1884
 #define MQTT_TOPIC "test"
 
 // Sensor Deteksi Objek
@@ -15,4 +15,7 @@
 #define TDS_PIN 34
 
 // Sensor Suhu Air
-#define DS18B20_PIN 12
+#define DS18B20_PIN 18
+
+// Sensor Kelembapan
+#define DHT_PIN 13
