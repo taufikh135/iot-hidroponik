@@ -10,16 +10,39 @@
 
 #include "config.h"
 
-WifiControl wifiControl(WIFI_SSID, WIFI_PASSWORD);
-SensorDeteksiObjek sensorDeteksiObjek(TRIGGER_PIN, ECHO_PIN);
-MqttClient mqttClient(wifiControl.getClient(), MQTT_SERVER, MQTT_PORT);
-SensorTDS sensorTDS(TDS_PIN);
-SensorSuhuAir sensorSuhuAir(DS18B20_PIN);
-SensorKelembapan sensorKelembapan(DHT_PIN);
-PhSensor phSensor(PH_PIN, TEMP_PIN);
+WifiControl wifiControl(WifiConfig::SSID, WifiConfig::PASSWORD);
+SensorDeteksiObjek sensorDeteksiObjek(SensorDeteksiObjekConfig::TRIGER_PIN, SensorDeteksiObjekConfig::ECHO_PIN);
+MqttClient mqttClient(wifiControl.getClient(), MqttConfig::SERVER, MqttConfig::PORT);
+SensorTDS sensorTDS(SensorTDSConfig::TDS_PIN);
+SensorSuhuAir sensorSuhuAir(SensorSuhuAirConfig::DS18B20_PIN);
+SensorKelembapan sensorKelembapan(SensorKelembapanConfig::DHT_PIN);
+PhSensor phSensor(PhSensorConfig::PH_PIN, PhSensorConfig::TEMP_PIN);
+
+unsigned long lastSend = 0;
+const unsigned long interval = 5000; // Interval pengiriman data (5 detik)
 
 void callback(String message) {
 
+}
+
+void readAndSendData() {
+    long jarakObjek = sensorDeteksiObjek.readDistance();
+    float suhuAir = sensorSuhuAir.readTemperature();
+    float tds = sensorTDS.readTDSPpm();
+    float kelembapan = sensorKelembapan.readHumidity();
+    float phValue = phSensor.readPhValue();
+
+    StaticJsonDocument<200> doc;
+    doc["jarak"] = jarakObjek;
+    doc["suhuAir"] = suhuAir;
+    doc["tds"] = tds;
+    doc["kelembapan"] = kelembapan;
+    doc["phValue"] = phValue;
+    
+    String jsonString;
+    serializeJson(doc, jsonString);
+
+    mqttClient.publish(MqttConfig::TOPIC, jsonString.c_str());
 }
 
 void setup() {
@@ -29,7 +52,7 @@ void setup() {
     wifiControl.connect();
     // MQTT
     mqttClient.setCallback(callback);
-    mqttClient.setSubscribe(MQTT_TOPIC);
+    mqttClient.setSubscribe(MqttConfig::TOPIC);
     mqttClient.begin();
     // Sensor Deteksi Objek
     sensorDeteksiObjek.begin();
@@ -50,20 +73,8 @@ void loop() {
 
     mqttClient.loop();
 
-    long jarakObjek = sensorDeteksiObjek.readDistance();
-    float suhuAir = sensorSuhuAir.readTemperature();
-    float tds = sensorTDS.readTDSPpm();
-    float kelembapan = sensorKelembapan.readHumidity();
-    float phValue = phSensor.readPhValue();
-
-    StaticJsonDocument<200> doc;
-    doc["jarak"] = jarakObjek;
-    doc["suhuAir"] = suhuAir;
-    doc["tds"] = tds;
-    doc["kelembapan"] = kelembapan;
-    doc["phValue"] = phValue;
-    String jsonString;
-    serializeJson(doc, jsonString);
-
-    mqttClient.publish(MQTT_TOPIC, jsonString.c_str());
+    if (millis() - lastSend >= interval) {
+        readAndSendData();
+        lastSend = millis();
+    }
 }
