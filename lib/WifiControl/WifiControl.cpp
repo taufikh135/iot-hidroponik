@@ -3,7 +3,6 @@
 WifiControl::WifiControl(const char* ssid, const char* password) {
     this->ssid = ssid;
     this->password = password;
-    this->client = WiFiClient();
 }
 
 void WifiControl::connect() {
@@ -20,10 +19,6 @@ void WifiControl::connect() {
     Serial.println(WiFi.localIP());
 }
 
-WiFiClient& WifiControl::getClient() {
-    return this->client;
-}
-
 bool WifiControl::isConnect() {
-    return this->client.connected();
+    return WiFi.status() == WL_CONNECTED;
 }

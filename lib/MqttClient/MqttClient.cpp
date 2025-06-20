@@ -43,9 +43,11 @@ void MqttClient::loop() {
 }
 
 void MqttClient::reconnect() {
-    while (!this->client.connected()) {
+    String clientId = "ESP32Client-" + String(random(0xffff), HEX);
+
+    while (!this->isConnect()) {
         Serial.print("Menghubungkan ke MQTT...");
-        if (this->client.connect("ESP32Client")) {
+        if (this->client.connect(clientId.c_str(), this->username, this->password)) {
             Serial.println("terhubung");
 
             if (this->messageCallback != nullptr) {

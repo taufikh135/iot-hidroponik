@@ -7,7 +7,6 @@ class WifiControl
     private:
         const char* ssid;
         const char* password;
-        WiFiClient client;
 
     public:
         /**
@@ -21,12 +20,6 @@ class WifiControl
          * Menghubungkan ke WiFi
          */
         void connect();
-
-        /**
-         * Mengembalikan WiFiClient
-         * @return WiFiClient
-         */
-        WiFiClient& getClient();
 
         /**
          * Mengembalikan status WiFi

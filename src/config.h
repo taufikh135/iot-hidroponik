@@ -1,14 +1,9 @@
+#pragma once
+
 // WiFi Config
 namespace WifiConfig {
-    const char* SSID = "Redmi Note 8";
-    const char* PASSWORD = "ewedulu123";
-}
-
-// MQTT Config
-namespace MqttConfig {
-    const char* SERVER = "192.168.249.135";
-    const int PORT = 1884;
-    const char* TOPIC = "test";
+    const char* SSID = "aixbwis";
+    const char* PASSWORD = "rbetopik";
 }
 
 // Sensor Deteksi Objek
@@ -32,8 +27,15 @@ namespace SensorKelembapanConfig {
     const int DHT_PIN = 13;
 }
 
-// Sensor pH
-namespace PhSensorConfig {
-    const int PH_PIN = 32;
-    const int TEMP_PIN = 33;
+// Power
+namespace PowerConfig {
+    const int POWER_PIN = 2;
+}
+
+// Mqtt Config
+namespace MqttConfig {
+    const char* SERVER = "192.168.5.241";
+    const int PORT = 1884;
+    const char* USERNAME = ""; // Ganti dengan username Anda
+    const char* PASSWORD = ""; // Ganti dengan password Anda
 }
