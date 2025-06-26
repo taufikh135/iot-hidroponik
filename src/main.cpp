@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <Fuzzy.h>
 
 #include "config.h"
 #include "SensorTDS.h"
@@ -8,6 +9,7 @@
 #include "WifiControl.h"
 #include "MqttClient.h"
 #include "IntervalRunner.h"
+#include "PompaControl.h"
 
 #define TOPIC_POWER_COMMAND "power/command"
 
@@ -24,11 +26,19 @@ MqttClient mqttClient(
   MqttConfig::USERNAME, 
   MqttConfig::PASSWORD
 );
+PompaControl pompaNutrisiControl(PompaConfig::NUTRISI_PIN);
+PompaControl pompaPendinginControl(PompaConfig::PENDINGIN_PIN);
+
+// 🔁 Fuzzy engine
+Fuzzy* fuzzy = new Fuzzy();
 
 // Data Sensor
 float tds = 0;
 float kelembapan = 0;
 float suhu = 0;
+
+String pompaNutrisi = "OFF";
+String pompaPendingin = "OFF";
 
 // Callback untuk menerima pesan MQTT
 void callback(String message) {
@@ -43,24 +53,61 @@ void callback(String message) {
   }
 }
 
-// Send data ke MQTT
-void sendData() {
-  if (!powerControl.getState()) {
-    // Jika power mati, set nilai sensor ke 0
-    tds = 0;
-    kelembapan = 0;
-    suhu = 0;
-  } else {
-    // Membaca data sensor
-    tds = sensorTds.readTDSPpm();
-    kelembapan = sensorKelembapan.readHumidity();
-    suhu = sensorSuhuAir.readTemperature();
-  }
-
-  // Mengirim data ke Blynk
+void publishData() {
   mqttClient.publish("sensor/tds", String(tds).c_str());
   mqttClient.publish("sensor/kelembapan", String(kelembapan).c_str());
   mqttClient.publish("sensor/suhu-air", String(suhu).c_str());
+  mqttClient.publish("pompa/nutrisi", pompaNutrisi.c_str());
+  mqttClient.publish("pompa/pendingin", pompaPendingin.c_str());
+}
+
+// Send data ke MQTT
+void sendData() {
+  if (!powerControl.getState()) {
+    tds = 0;
+    kelembapan = 0;
+    suhu = 0;
+
+    // Matikan pompa jika power mati
+    pompaNutrisiControl.turnOff();
+    pompaPendinginControl.turnOff();
+    pompaNutrisi = "OFF";
+  } else {
+    tds = 900;
+    kelembapan = sensorKelembapan.readHumidity();
+    suhu = sensorSuhuAir.readTemperature();
+
+    // Fuzzy
+    fuzzy->setInput(1, tds);
+    fuzzy->setInput(2, suhu);
+    fuzzy->setInput(3, kelembapan);
+    fuzzy->fuzzify();
+
+    float outputNutrisi = fuzzy->defuzzify(1);
+    float outputPendingin = fuzzy->defuzzify(2);
+
+    // Implementasi output (bisa disesuaikan dengan PWM)
+    // pompaControl.setSpeed(outputNutrisi); // Jika mendukung PWM
+    // Untuk pendingin bisa diimplementasikan sesuai kebutuhan
+
+    if (outputNutrisi > 50) {
+      pompaNutrisi = "ON";
+      pompaNutrisiControl.turnOn();
+    } else {
+      pompaNutrisi = "OFF";
+      pompaNutrisiControl.turnOff();
+    }
+
+    if (outputPendingin > 50) {
+      pompaPendingin = "ON";
+      // Implementasi pendingin, misalnya menghidupkan kipas
+    } else {
+      pompaPendingin = "OFF";
+      // Implementasi pendingin, misalnya mematikan kipas
+    }
+  }
+
+  publishData();
 }
 
 IntervalRunner sendDataRunner(sendData, 1000); // Set interval to 1 detik
@@ -68,18 +115,185 @@ IntervalRunner sendDataRunner(sendData, 1000); // Set interval to 1 detik
 void setup() {  
   // Serial
   Serial.begin(115200);
+
   // Power
   powerControl.begin();
+
   // Begin sensor
   sensorTds.begin();
   sensorKelembapan.begin();
   sensorSuhuAir.begin();
+
+  // Pompa
+  pompaNutrisiControl.begin();
+  pompaPendinginControl.begin();
+
   // WiFi
   wifiControl.connect();
+
   // MQTT
   mqttClient.begin();
   mqttClient.setCallback(callback);
   mqttClient.setSubscribe(TOPIC_POWER_COMMAND);
+
+  // =======================
+  // 📥 INPUT TDS (ppm)
+  // =======================
+  FuzzyInput* tds = new FuzzyInput(1);
+
+  // Range untuk tanaman hidroponik umum:
+  FuzzySet* tdsVeryLow = new FuzzySet(0, 0, 200, 400);    // Untuk tanaman muda/stek
+  FuzzySet* tdsLow = new FuzzySet(300, 500, 600, 800);    // Tanaman pertumbuhan vegetatif
+  FuzzySet* tdsMedium = new FuzzySet(700, 900, 1000, 1200); // Tanaman berbunga/berbuah
+  FuzzySet* tdsHigh = new FuzzySet(1100, 1300, 1500, 2000); // Batas atas untuk kebanyakan tanaman
+
+  tds->addFuzzySet(tdsVeryLow);
+  tds->addFuzzySet(tdsLow);
+  tds->addFuzzySet(tdsMedium);
+  tds->addFuzzySet(tdsHigh);
+  fuzzy->addFuzzyInput(tds);
+
+  // =======================
+  // 📥 INPUT SUHU AIR (°C)
+  // =======================
+  FuzzyInput* suhu = new FuzzyInput(2);
+
+  // Suhu optimal untuk hidroponik:
+  FuzzySet* suhuDingin = new FuzzySet(0, 10, 15, 18);    // Terlalu dingin
+  FuzzySet* suhuOptimal = new FuzzySet(17, 20, 22, 25);   // Range optimal
+  FuzzySet* suhuPanas = new FuzzySet(24, 26, 30, 35);     // Terlalu panas
+
+  suhu->addFuzzySet(suhuDingin);
+  suhu->addFuzzySet(suhuOptimal);
+  suhu->addFuzzySet(suhuPanas);
+  fuzzy->addFuzzyInput(suhu);
+
+  // =======================
+  // 📥 INPUT KELEMBAPAN (%)
+  // =======================
+  FuzzyInput* kelembapan = new FuzzyInput(3);
+
+  // Kelembapan udara untuk hidroponik:
+  FuzzySet* humKering = new FuzzySet(0, 30, 40, 50);      // Terlalu kering
+  FuzzySet* humOptimal = new FuzzySet(45, 55, 65, 75);    // Range optimal
+  FuzzySet* humLembap = new FuzzySet(70, 80, 90, 100);    // Terlalu lembap
+
+  kelembapan->addFuzzySet(humKering);
+  kelembapan->addFuzzySet(humOptimal);
+  kelembapan->addFuzzySet(humLembap);
+  fuzzy->addFuzzyInput(kelembapan);
+
+  // =======================
+  // 📤 OUTPUT Pompa Nutrisi (%)
+  // =======================
+  FuzzyOutput* nutrisi = new FuzzyOutput(1);
+  FuzzySet* nutOff = new FuzzySet(0, 0, 0, 10);          // Mati total
+  FuzzySet* nutLow = new FuzzySet(5, 20, 30, 50);        // Dosis rendah
+  FuzzySet* nutMedium = new FuzzySet(40, 60, 70, 80);    // Dosis sedang
+  FuzzySet* nutHigh = new FuzzySet(75, 90, 100, 100);    // Dosis tinggi
+
+  nutrisi->addFuzzySet(nutOff);
+  nutrisi->addFuzzySet(nutLow);
+  nutrisi->addFuzzySet(nutMedium);
+  nutrisi->addFuzzySet(nutHigh);
+  fuzzy->addFuzzyOutput(nutrisi);
+
+  // =======================
+  // 📤 OUTPUT Pompa Pendingin (%)
+  // =======================
+  FuzzyOutput* pendingin = new FuzzyOutput(2);
+  FuzzySet* fanOff = new FuzzySet(0, 0, 0, 30);          // Mati
+  FuzzySet* fanLow = new FuzzySet(20, 40, 50, 70);       // Kecepatan rendah
+  FuzzySet* fanHigh = new FuzzySet(60, 80, 100, 100);    // Kecepatan tinggi
+
+  pendingin->addFuzzySet(fanOff);
+  pendingin->addFuzzySet(fanLow);
+  pendingin->addFuzzySet(fanHigh);
+  fuzzy->addFuzzyOutput(pendingin);
+
+  // =======================
+  // 📜 RULES YANG BENAR
+  // =======================
+
+  // 1. Jika TDS sangat rendah -> Nutrisi tinggi
+  FuzzyRuleAntecedent *jikaTdsSangatRendah = new FuzzyRuleAntecedent();
+  jikaTdsSangatRendah->joinSingle(tdsVeryLow);
+  FuzzyRuleConsequent *makaNutrisiTinggi = new FuzzyRuleConsequent();
+  makaNutrisiTinggi->addOutput(nutHigh);
+  FuzzyRule *fuzzyRule1 = new FuzzyRule(1, jikaTdsSangatRendah, makaNutrisiTinggi);
+  fuzzy->addFuzzyRule(fuzzyRule1);
+
+  // 2. Jika TDS rendah -> Nutrisi sedang
+  FuzzyRuleAntecedent *jikaTdsRendah = new FuzzyRuleAntecedent();
+  jikaTdsRendah->joinSingle(tdsLow);
+  FuzzyRuleConsequent *makaNutrisiSedang = new FuzzyRuleConsequent();
+  makaNutrisiSedang->addOutput(nutMedium);
+  FuzzyRule *fuzzyRule2 = new FuzzyRule(2, jikaTdsRendah, makaNutrisiSedang);
+  fuzzy->addFuzzyRule(fuzzyRule2);
+
+  // 3. Jika TDS medium -> Nutrisi rendah
+  FuzzyRuleAntecedent *jikaTdsMedium = new FuzzyRuleAntecedent();
+  jikaTdsMedium->joinSingle(tdsMedium);
+  FuzzyRuleConsequent *makaNutrisiRendah = new FuzzyRuleConsequent();
+  makaNutrisiRendah->addOutput(nutLow);
+  FuzzyRule *fuzzyRule3 = new FuzzyRule(3, jikaTdsMedium, makaNutrisiRendah);
+  fuzzy->addFuzzyRule(fuzzyRule3);
+
+  // 4. Jika TDS tinggi -> Matikan nutrisi
+  FuzzyRuleAntecedent *jikaTdsTinggi = new FuzzyRuleAntecedent();
+  jikaTdsTinggi->joinSingle(tdsHigh);
+  FuzzyRuleConsequent *makaNutrisiMati = new FuzzyRuleConsequent();
+  makaNutrisiMati->addOutput(nutOff);
+  FuzzyRule *fuzzyRule4 = new FuzzyRule(4, jikaTdsTinggi, makaNutrisiMati);
+  fuzzy->addFuzzyRule(fuzzyRule4);
+
+  // 5. Jika suhu panas -> Pendingin tinggi
+  FuzzyRuleAntecedent *jikaSuhuPanas = new FuzzyRuleAntecedent();
+  jikaSuhuPanas->joinSingle(suhuPanas);
+  FuzzyRuleConsequent *makaPendinginTinggi = new FuzzyRuleConsequent();
+  makaPendinginTinggi->addOutput(fanHigh);
+  FuzzyRule *fuzzyRule5 = new FuzzyRule(5, jikaSuhuPanas, makaPendinginTinggi);
+  fuzzy->addFuzzyRule(fuzzyRule5);
+
+  // Rule 6: Jika TDS rendah DAN suhu panas -> Nutrisi tinggi
+  // FuzzyRuleAntecedent *jikaTdsRendahDanSuhuPanas = new FuzzyRuleAntecedent();
+  // jikaTdsRendahDanSuhuPanas->joinWithAND(tdsLow, suhuPanas);
+  // FuzzyRuleConsequent *makaNutrisiTinggi = new FuzzyRuleConsequent();
+  // makaNutrisiTinggi->addOutput(nutHigh);
+  // FuzzyRule *fuzzyRule6 = new FuzzyRule(6, jikaTdsRendahDanSuhuPanas, makaNutrisiTinggi);
+  // fuzzy->addFuzzyRule(fuzzyRule6);
+
+  // 7. Jika suhu panas DAN kelembapan rendah -> Pendingin maksimum
+  FuzzyRuleAntecedent *jikaPanasDanKering = new FuzzyRuleAntecedent();
+  jikaPanasDanKering->joinWithAND(suhuPanas, humKering);
+  FuzzyRuleConsequent *makaPendinginMaks = new FuzzyRuleConsequent();
+  makaPendinginMaks->addOutput(fanHigh);
+  FuzzyRule *fuzzyRule7 = new FuzzyRule(7, jikaPanasDanKering, makaPendinginMaks);
+  fuzzy->addFuzzyRule(fuzzyRule7);
+
+  // 8. Jika suhu optimal -> Pendingin rendah
+  FuzzyRuleAntecedent *jikaSuhuOptimal = new FuzzyRuleAntecedent();
+  jikaSuhuOptimal->joinSingle(suhuOptimal);
+  FuzzyRuleConsequent *makaPendinginLow = new FuzzyRuleConsequent();
+  makaPendinginLow->addOutput(fanLow);
+  FuzzyRule *fuzzyRule8 = new FuzzyRule(8, jikaSuhuOptimal, makaPendinginLow);
+  fuzzy->addFuzzyRule(fuzzyRule8);
+
+  // 9. Jika suhu dingin -> Matikan pendingin
+  FuzzyRuleAntecedent *jikaSuhuDingin = new FuzzyRuleAntecedent();
+  jikaSuhuDingin->joinSingle(suhuDingin);
+  FuzzyRuleConsequent *makaPendinginMati = new FuzzyRuleConsequent();
+  makaPendinginMati->addOutput(fanOff);
+  FuzzyRule *fuzzyRule9 = new FuzzyRule(9, jikaSuhuDingin, makaPendinginMati);
+  fuzzy->addFuzzyRule(fuzzyRule9);
+
+  // 10. Jika suhu panas DAN kelembapan tinggi -> Pendingin sedang
+  FuzzyRuleAntecedent *jikaPanasDanLembap = new FuzzyRuleAntecedent();
+  jikaPanasDanLembap->joinWithAND(suhuPanas, humLembap);
+  FuzzyRuleConsequent *makaPendinginSedang = new FuzzyRuleConsequent();
+  makaPendinginSedang->addOutput(fanLow);
+  FuzzyRule *fuzzyRule10 = new FuzzyRule(10, jikaPanasDanLembap, makaPendinginSedang);
+  fuzzy->addFuzzyRule(fuzzyRule10);
 }
 
 void loop() {

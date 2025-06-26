@@ -2,8 +2,8 @@
 
 // WiFi Config
 namespace WifiConfig {
-    const char* SSID = "aixbwis";
-    const char* PASSWORD = "rbetopik";
+    const char* SSID = "zan29";
+    const char* PASSWORD = "iri12345";
 }
 
 // Sensor Deteksi Objek
@@ -34,8 +34,14 @@ namespace PowerConfig {
 
 // Mqtt Config
 namespace MqttConfig {
-    const char* SERVER = "192.168.5.241";
+    const char* SERVER = "192.168.80.135";
     const int PORT = 1884;
     const char* USERNAME = ""; // Ganti dengan username Anda
     const char* PASSWORD = ""; // Ganti dengan password Anda
+}
+
+// Pompa Config
+namespace PompaConfig {
+    const int NUTRISI_PIN = 15; // Pin untuk mengontrol pompa
+    const int PENDINGIN_PIN = 12; // Pin untuk mengontrol pompa
 }
