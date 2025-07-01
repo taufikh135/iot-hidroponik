@@ -1,5 +1,6 @@
-#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <Fuzzy.h>
+#include <ArduinoJson.h>
 
 #include "config.h"
 #include "SensorTDS.h"
@@ -18,7 +19,7 @@ SensorKelembapan sensorKelembapan(SensorKelembapanConfig::DHT_PIN);
 SensorSuhuAir sensorSuhuAir(SensorSuhuAirConfig::DS18B20_PIN);
 PowerControl powerControl(PowerConfig::POWER_PIN);
 WifiControl wifiControl(WifiConfig::SSID, WifiConfig::PASSWORD);
-WiFiClient espClient;
+WiFiClientSecure espClient;
 MqttClient mqttClient( 
   espClient,
   MqttConfig::SERVER, 
@@ -33,9 +34,9 @@ PompaControl pompaPendinginControl(PompaConfig::PENDINGIN_PIN);
 Fuzzy* fuzzy = new Fuzzy();
 
 // Data Sensor
-float tds = 0;
-float kelembapan = 0;
-float suhu = 0;
+int tds = 0;
+int kelembapan = 0;
+int suhu = 0;
 
 String pompaNutrisi = "OFF";
 String pompaPendingin = "OFF";
@@ -54,11 +55,32 @@ void callback(String message) {
 }
 
 void publishData() {
-  mqttClient.publish("sensor/tds", String(tds).c_str());
-  mqttClient.publish("sensor/kelembapan", String(kelembapan).c_str());
-  mqttClient.publish("sensor/suhu-air", String(suhu).c_str());
-  mqttClient.publish("pompa/nutrisi", pompaNutrisi.c_str());
-  mqttClient.publish("pompa/pendingin", pompaPendingin.c_str());
+  // Membuat objek JSON Sensor
+  JsonDocument docSensor;
+  
+  // Menambahkan data ke JSON
+  docSensor["tds"] = tds;
+  docSensor["suhu_air"] = suhu;
+  docSensor["kelembapan"] = kelembapan;
+  
+  // Serialisasi JSON
+  char sensorBuffer[200];
+  serializeJson(docSensor, sensorBuffer);
+
+  // Membuat objek JSON Pompa
+  JsonDocument docPompa;
+  
+  // Menambahkan data ke JSON
+  docPompa["pompa_nutrisi"] = pompaNutrisi;
+  docPompa["pompa_air_dingin"] = pompaPendingin;
+
+  // Serialisasi JSON
+  char pompaBuffer[200];
+  serializeJson(docPompa, pompaBuffer);
+
+  // Mengirim data ke MQTT
+  mqttClient.publish("sensor", sensorBuffer);
+  mqttClient.publish("pompa", pompaBuffer);
 }
 
 // Send data ke MQTT
@@ -73,9 +95,9 @@ void sendData() {
     pompaPendinginControl.turnOff();
     pompaNutrisi = "OFF";
   } else {
-    tds = 900;
-    kelembapan = sensorKelembapan.readHumidity();
-    suhu = sensorSuhuAir.readTemperature();
+    tds = (int) sensorTds.readTDSPpm();
+    kelembapan = (int) sensorKelembapan.readHumidity();
+    suhu = (int) sensorSuhuAir.readTemperature();
 
     // Fuzzy
     fuzzy->setInput(1, tds);
@@ -132,6 +154,7 @@ void setup() {
   wifiControl.connect();
 
   // MQTT
+  espClient.setCACert(MqttConfig::CA_CERT);
   mqttClient.begin();
   mqttClient.setCallback(callback);
   mqttClient.setSubscribe(TOPIC_POWER_COMMAND);
