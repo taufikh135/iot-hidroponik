@@ -165,10 +165,10 @@ void setup() {
   FuzzyInput* tds = new FuzzyInput(1);
 
   // Range untuk tanaman hidroponik umum:
-  FuzzySet* tdsVeryLow = new FuzzySet(0, 0, 200, 400);    // Untuk tanaman muda/stek
-  FuzzySet* tdsLow = new FuzzySet(300, 500, 600, 800);    // Tanaman pertumbuhan vegetatif
-  FuzzySet* tdsMedium = new FuzzySet(700, 900, 1000, 1200); // Tanaman berbunga/berbuah
-  FuzzySet* tdsHigh = new FuzzySet(1100, 1300, 1500, 2000); // Batas atas untuk kebanyakan tanaman
+  FuzzySet* tdsVeryLow = new FuzzySet(0, 0, 150, 300);    // Untuk tanaman muda/stek
+  FuzzySet* tdsLow = new FuzzySet(250, 350, 400, 450);    // Tanaman pertumbuhan vegetatif
+  FuzzySet* tdsMedium = new FuzzySet(400, 450, 475, 500); // Tanaman berbunga/berbuah
+  FuzzySet* tdsHigh = new FuzzySet(475, 500, 500, 500);   // Batas atas 500ppm
 
   tds->addFuzzySet(tdsVeryLow);
   tds->addFuzzySet(tdsLow);
