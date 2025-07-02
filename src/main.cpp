@@ -59,9 +59,9 @@ void publishData() {
   JsonDocument docSensor;
   
   // Menambahkan data ke JSON
-  docSensor["tds"] = tdsValue;
-  docSensor["suhu_air"] = suhuAirValue;
-  docSensor["kelembapan"] = kelembapanValue;
+  docSensor["tds"] = (int) tdsValue;
+  docSensor["suhu_air"] = (int) suhuAirValue;
+  docSensor["kelembapan"] = (int) kelembapanValue;
   
   // Serialisasi JSON
   char sensorBuffer[200];
